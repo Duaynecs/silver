@@ -27,6 +27,7 @@ export const productSchema = z.object({
     .int()
     .min(0, 'Estoque mínimo deve ser maior ou igual a zero'),
   category: z.string().optional(),
+  imagePath: z.string().optional(),
   active: z.boolean().default(true),
 });
 

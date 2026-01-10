@@ -1,11 +1,11 @@
 import type { CategoryFormData } from '@/schemas/categorySchema';
-import type { Category, CategoryWithChildren } from '@/types';
+import type { CategoryWithChildren, CategoryWithStats } from '@/types';
 import { mapDbArrayToType } from '@/utils/dbMapper';
 import { create } from 'zustand';
 import { useCompaniesStore } from './companiesStore';
 
 interface CategoriesState {
-  categories: Category[];
+  categories: CategoryWithStats[];
   loading: boolean;
   error: string | null;
   fetchCategories: () => Promise<void>;
@@ -13,8 +13,8 @@ interface CategoriesState {
   updateCategory: (id: number, data: CategoryFormData) => Promise<void>;
   deleteCategory: (id: number) => Promise<void>;
   getCategoriesTree: () => CategoryWithChildren[];
-  getRootCategories: () => Category[];
-  getChildCategories: (parentId: number) => Category[];
+  getRootCategories: () => CategoryWithStats[];
+  getChildCategories: (parentId: number) => CategoryWithStats[];
 }
 
 export const useCategoriesStore = create<CategoriesState>((set, get) => ({
@@ -32,10 +32,26 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       }
 
       const result = await window.electron.db.query(
-        'SELECT * FROM categories WHERE active = 1 AND company_id = ? ORDER BY name ASC',
+        `SELECT
+          c.id,
+          c.name,
+          c.description,
+          c.parent_id as parentId,
+          c.company_id as companyId,
+          c.active,
+          c.created_at as createdAt,
+          c.updated_at as updatedAt,
+          COUNT(DISTINCT p.id) as productCount,
+          COALESCE(SUM(p.stock_quantity), 0) as stockQuantity,
+          COALESCE(SUM(p.stock_quantity * p.sale_price), 0) as stockValue
+        FROM categories c
+        LEFT JOIN products p ON p.category = c.name AND p.active = 1 AND p.company_id = c.company_id
+        WHERE c.active = 1 AND c.company_id = ?
+        GROUP BY c.id, c.name, c.description, c.parent_id, c.company_id, c.active, c.created_at, c.updated_at
+        ORDER BY c.name ASC`,
         [companyId]
       );
-      const categories = mapDbArrayToType<Category>(result as any[]);
+      const categories = mapDbArrayToType<CategoryWithStats>(result as any[]);
       set({ categories, loading: false });
     } catch (error) {
       set({ error: 'Erro ao carregar categorias', loading: false });
@@ -151,11 +167,33 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
     const buildTree = (parentId: number | undefined, level: number): CategoryWithChildren[] => {
       return categories
         .filter(cat => cat.parentId === parentId || (!cat.parentId && !parentId))
-        .map(cat => ({
-          ...cat,
-          level,
-          children: buildTree(cat.id, level + 1),
-        }));
+        .map(cat => {
+          const children = buildTree(cat.id, level + 1);
+
+          // Calcula estatísticas agregadas: próprias + de todos os filhos recursivamente
+          const aggregateStats = (nodes: CategoryWithChildren[]): { products: number; quantity: number; value: number } => {
+            return nodes.reduce((acc, node) => {
+              const childStats = aggregateStats(node.children);
+              return {
+                products: acc.products + (node.productCount || 0) + childStats.products,
+                quantity: acc.quantity + (node.stockQuantity || 0) + childStats.quantity,
+                value: acc.value + (node.stockValue || 0) + childStats.value,
+              };
+            }, { products: 0, quantity: 0, value: 0 });
+          };
+
+          const childStats = aggregateStats(children);
+
+          return {
+            ...cat,
+            level,
+            children,
+            // Soma os valores próprios com os dos filhos
+            productCount: (cat.productCount || 0) + childStats.products,
+            stockQuantity: (cat.stockQuantity || 0) + childStats.quantity,
+            stockValue: (cat.stockValue || 0) + childStats.value,
+          };
+        });
     };
 
     return buildTree(undefined, 0);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, Users, ShoppingCart, TrendingUp } from 'lucide-react';
+import { Package, Users, ShoppingCart, TrendingUp, Warehouse, DollarSign } from 'lucide-react';
 import { formatCurrency } from '@/utils/format';
 import { useCompaniesStore } from '@/stores/companiesStore';
 
@@ -13,6 +13,8 @@ export default function Dashboard() {
     todaySales: 0,
     todayRevenue: 0,
     lowStock: 0,
+    totalStockQuantity: 0,
+    totalStockValue: 0,
   });
 
   useEffect(() => {
@@ -53,12 +55,26 @@ export default function Dashboard() {
         [currentCompanyId]
       );
 
+      // Quantidade total em estoque
+      const stockQuantityResult = await window.electron.db.query(
+        'SELECT COALESCE(SUM(stock_quantity), 0) as total FROM products WHERE active = 1 AND company_id = ?',
+        [currentCompanyId]
+      );
+
+      // Valor total do estoque (quantidade × preço de venda)
+      const stockValueResult = await window.electron.db.query(
+        'SELECT COALESCE(SUM(stock_quantity * sale_price), 0) as total FROM products WHERE active = 1 AND company_id = ?',
+        [currentCompanyId]
+      );
+
       setStats({
         totalProducts: productsResult[0].count,
         totalCustomers: customersResult[0].count,
         todaySales: salesResult[0].count,
         todayRevenue: salesResult[0].revenue,
         lowStock: lowStockResult[0].count,
+        totalStockQuantity: stockQuantityResult[0].total,
+        totalStockValue: stockValueResult[0].total,
       });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -120,6 +136,31 @@ export default function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.todayRevenue)}</div>
             <p className="text-xs text-muted-foreground">Total do dia</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Informações de Estoque */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Quantidade em Estoque</CardTitle>
+            <Warehouse className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalStockQuantity.toLocaleString('pt-BR')}</div>
+            <p className="text-xs text-muted-foreground">Unidades disponíveis</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Valor do Estoque</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats.totalStockValue)}</div>
+            <p className="text-xs text-muted-foreground">Valor total em estoque</p>
           </CardContent>
         </Card>
       </div>

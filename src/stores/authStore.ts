@@ -16,9 +16,17 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
   login: async (username: string, password: string) => {
     try {
+      // Verifica a senha usando bcrypt
+      const isPasswordValid = await window.electron.auth.verifyPassword(username, password);
+
+      if (!isPasswordValid) {
+        return false;
+      }
+
+      // Busca os dados completos do usuário
       const result = await window.electron.db.query(
-        'SELECT * FROM users WHERE username = ? AND password = ?',
-        [username, password]
+        'SELECT * FROM users WHERE username = ?',
+        [username]
       );
 
       if (result && result.length > 0) {

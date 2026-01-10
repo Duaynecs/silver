@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { DatabaseManager } from './database/manager';
+import bcrypt from 'bcrypt';
 
 let mainWindow: BrowserWindow | null = null;
 let dbManager: DatabaseManager | null = null;
@@ -9,13 +10,44 @@ let autoBackupInterval: NodeJS.Timeout | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Função para obter o caminho de backup configurado
+async function getBackupPath(): Promise<string> {
+  if (!dbManager) {
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'backups');
+  }
+
+  try {
+    const result = dbManager.query(
+      'SELECT value FROM settings WHERE key = ?',
+      ['backup_path']
+    );
+
+    if (result && result.length > 0) {
+      const savedPath = (result[0] as { value: string }).value;
+      // Verifica se o caminho ainda existe e tem permissão de escrita
+      try {
+        await fs.access(savedPath, fs.constants.W_OK);
+        return savedPath;
+      } catch (error) {
+        console.warn('Caminho de backup configurado não está acessível, usando padrão');
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao obter caminho de backup:', error);
+  }
+
+  // Retorna caminho padrão se não houver configuração ou em caso de erro
+  const userDataPath = app.getPath('userData');
+  return path.join(userDataPath, 'backups');
+}
+
 // Função para criar backup automático
 async function createAutoBackup() {
   if (!dbManager) return;
 
   try {
-    const userDataPath = app.getPath('userData');
-    const backupsDir = path.join(userDataPath, 'backups');
+    const backupsDir = await getBackupPath();
 
     // Cria o diretório de backups se não existir
     await fs.mkdir(backupsDir, { recursive: true });
@@ -25,6 +57,7 @@ async function createAutoBackup() {
     const filename = `backup_auto_${timestamp}.db`;
 
     const backupPath = path.join(backupsDir, filename);
+    const userDataPath = app.getPath('userData');
     const dbPath = path.join(userDataPath, 'silver.db');
 
     // Copia o arquivo do banco de dados
@@ -39,13 +72,56 @@ async function createAutoBackup() {
   }
 }
 
+// Função para obter a retenção de backups configurada
+async function getBackupRetention(): Promise<number> {
+  if (!dbManager) return 7; // Padrão: 7 backups
+
+  try {
+    const result = dbManager.query(
+      'SELECT value FROM settings WHERE key = ?',
+      ['backup_retention']
+    );
+
+    if (result && result.length > 0) {
+      const retention = parseInt((result[0] as { value: string }).value, 10);
+      return retention > 0 ? retention : 7;
+    }
+  } catch (error) {
+    console.error('Erro ao obter retenção de backup:', error);
+  }
+
+  return 7; // Padrão
+}
+
+// Função para obter a frequência de backup configurada (em horas)
+async function getBackupFrequency(): Promise<number> {
+  if (!dbManager) return 24; // Padrão: 24 horas
+
+  try {
+    const result = dbManager.query(
+      'SELECT value FROM settings WHERE key = ?',
+      ['backup_frequency']
+    );
+
+    if (result && result.length > 0) {
+      const frequency = parseInt((result[0] as { value: string }).value, 10);
+      return frequency > 0 ? frequency : 24;
+    }
+  } catch (error) {
+    console.error('Erro ao obter frequência de backup:', error);
+  }
+
+  return 24; // Padrão
+}
+
 // Função para limpar backups automáticos antigos
 async function cleanupOldAutoBackups(backupsDir: string) {
   try {
+    const retention = await getBackupRetention();
     const files = await fs.readdir(backupsDir);
     const autoBackups = files.filter(file => file.startsWith('backup_auto_') && file.endsWith('.db'));
 
-    if (autoBackups.length <= 7) return;
+    if (autoBackups.length <= retention) return;
 
     // Obtém informações de todos os backups automáticos
     const backupInfos = await Promise.all(
@@ -59,8 +135,8 @@ async function cleanupOldAutoBackups(backupsDir: string) {
     // Ordena por data de criação (mais antigo primeiro)
     backupInfos.sort((a, b) => a.createdAt - b.createdAt);
 
-    // Remove os backups mais antigos, mantendo apenas os 7 mais recentes
-    const toDelete = backupInfos.slice(0, backupInfos.length - 7);
+    // Remove os backups mais antigos, mantendo apenas os N mais recentes
+    const toDelete = backupInfos.slice(0, backupInfos.length - retention);
     for (const backup of toDelete) {
       await fs.unlink(backup.path);
       console.log(`Backup automático antigo removido: ${backup.file}`);
@@ -71,16 +147,20 @@ async function cleanupOldAutoBackups(backupsDir: string) {
 }
 
 // Função para iniciar backup automático
-function startAutoBackup() {
+async function startAutoBackup() {
   // Cria o primeiro backup ao iniciar
   createAutoBackup();
 
-  // Configura backup automático a cada 24 horas (86400000 ms)
+  // Obtém a frequência configurada (em horas)
+  const frequencyHours = await getBackupFrequency();
+  const intervalMs = frequencyHours * 60 * 60 * 1000;
+
+  // Configura backup automático com a frequência configurada
   autoBackupInterval = setInterval(() => {
     createAutoBackup();
-  }, 24 * 60 * 60 * 1000);
+  }, intervalMs);
 
-  console.log('Backup automático iniciado (a cada 24 horas)');
+  console.log(`Backup automático iniciado (a cada ${frequencyHours} horas)`);
 }
 
 // Função para parar backup automático
@@ -90,6 +170,12 @@ function stopAutoBackup() {
     autoBackupInterval = null;
     console.log('Backup automático parado');
   }
+}
+
+// Função para reiniciar backup automático (usado quando a configuração muda)
+async function restartAutoBackup() {
+  stopAutoBackup();
+  await startAutoBackup();
 }
 
 function createWindow() {
@@ -126,6 +212,23 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Register custom protocol for serving images
+  protocol.handle('silver-image', async (request) => {
+    const url = new URL(request.url);
+    const imagePath = path.join(app.getPath('userData'), 'images', url.hostname + url.pathname);
+
+    try {
+      const data = await fs.readFile(imagePath);
+      return new Response(data, {
+        headers: {
+          'content-type': 'image/jpeg'
+        }
+      });
+    } catch (error) {
+      return new Response('Image not found', { status: 404 });
+    }
+  });
+
   createWindow();
 
   // Inicia o backup automático
@@ -165,8 +268,7 @@ ipcMain.handle('db:execute', async (_event, query, params) => {
 ipcMain.handle('backup:create', async (_event, customName?: string) => {
   if (!dbManager) throw new Error('Database not initialized');
 
-  const userDataPath = app.getPath('userData');
-  const backupsDir = path.join(userDataPath, 'backups');
+  const backupsDir = await getBackupPath();
 
   // Cria o diretório de backups se não existir
   await fs.mkdir(backupsDir, { recursive: true });
@@ -178,6 +280,7 @@ ipcMain.handle('backup:create', async (_event, customName?: string) => {
     : `backup_${timestamp}.db`;
 
   const backupPath = path.join(backupsDir, filename);
+  const userDataPath = app.getPath('userData');
   const dbPath = path.join(userDataPath, 'silver.db');
 
   // Copia o arquivo do banco de dados
@@ -189,9 +292,9 @@ ipcMain.handle('backup:create', async (_event, customName?: string) => {
 ipcMain.handle('backup:restore', async (_event, filename: string) => {
   if (!dbManager) throw new Error('Database not initialized');
 
-  const userDataPath = app.getPath('userData');
-  const backupsDir = path.join(userDataPath, 'backups');
+  const backupsDir = await getBackupPath();
   const backupPath = path.join(backupsDir, filename);
+  const userDataPath = app.getPath('userData');
   const dbPath = path.join(userDataPath, 'silver.db');
 
   // Verifica se o arquivo de backup existe
@@ -214,8 +317,7 @@ ipcMain.handle('backup:restore', async (_event, filename: string) => {
 });
 
 ipcMain.handle('backup:list', async () => {
-  const userDataPath = app.getPath('userData');
-  const backupsDir = path.join(userDataPath, 'backups');
+  const backupsDir = await getBackupPath();
 
   try {
     // Cria o diretório se não existir
@@ -248,8 +350,7 @@ ipcMain.handle('backup:list', async () => {
 });
 
 ipcMain.handle('backup:delete', async (_event, filename: string) => {
-  const userDataPath = app.getPath('userData');
-  const backupsDir = path.join(userDataPath, 'backups');
+  const backupsDir = await getBackupPath();
   const backupPath = path.join(backupsDir, filename);
 
   try {
@@ -276,5 +377,243 @@ ipcMain.handle('backup:getInfo', async (_event, filename: string) => {
     };
   } catch (error) {
     throw new Error('Arquivo de backup não encontrado');
+  }
+});
+
+ipcMain.handle('backup:selectDirectory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Selecionar Diretório para Backups'
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+ipcMain.handle('backup:setPath', async (_event, newPath: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  // Verifica se o caminho existe e tem permissão de escrita
+  try {
+    await fs.access(newPath, fs.constants.W_OK);
+  } catch (error) {
+    throw new Error('Diretório não possui permissão de escrita');
+  }
+
+  // Salva nas configurações
+  const now = Date.now();
+  const existing = dbManager.query(
+    'SELECT id FROM settings WHERE key = ?',
+    ['backup_path']
+  );
+
+  if (existing && existing.length > 0) {
+    dbManager.execute(
+      'UPDATE settings SET value = ?, updated_at = ? WHERE key = ?',
+      [newPath, now, 'backup_path']
+    );
+  } else {
+    dbManager.execute(
+      'INSERT INTO settings (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ['backup_path', newPath, now, now]
+    );
+  }
+
+  return newPath;
+});
+
+ipcMain.handle('backup:getPath', async () => {
+  return await getBackupPath();
+});
+
+ipcMain.handle('backup:getPolicy', async () => {
+  const frequency = await getBackupFrequency();
+  const retention = await getBackupRetention();
+  return { frequency, retention };
+});
+
+ipcMain.handle('backup:setPolicy', async (_event, frequency: number, retention: number) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  // Valida os valores
+  if (frequency < 1 || frequency > 168) {
+    throw new Error('Frequência deve estar entre 1 e 168 horas (1 semana)');
+  }
+  if (retention < 1 || retention > 365) {
+    throw new Error('Retenção deve estar entre 1 e 365 backups');
+  }
+
+  const now = Date.now();
+
+  // Salva a frequência
+  const existingFrequency = dbManager.query(
+    'SELECT id FROM settings WHERE key = ?',
+    ['backup_frequency']
+  );
+
+  if (existingFrequency && existingFrequency.length > 0) {
+    dbManager.execute(
+      'UPDATE settings SET value = ?, updated_at = ? WHERE key = ?',
+      [frequency.toString(), now, 'backup_frequency']
+    );
+  } else {
+    dbManager.execute(
+      'INSERT INTO settings (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ['backup_frequency', frequency.toString(), now, now]
+    );
+  }
+
+  // Salva a retenção
+  const existingRetention = dbManager.query(
+    'SELECT id FROM settings WHERE key = ?',
+    ['backup_retention']
+  );
+
+  if (existingRetention && existingRetention.length > 0) {
+    dbManager.execute(
+      'UPDATE settings SET value = ?, updated_at = ? WHERE key = ?',
+      [retention.toString(), now, 'backup_retention']
+    );
+  } else {
+    dbManager.execute(
+      'INSERT INTO settings (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)',
+      ['backup_retention', retention.toString(), now, now]
+    );
+  }
+
+  // Reinicia o backup automático com a nova frequência
+  await restartAutoBackup();
+
+  return { frequency, retention };
+});
+
+// Authentication Handlers
+ipcMain.handle('auth:verifyPassword', async (_event, username: string, password: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  const result = dbManager.query('SELECT password FROM users WHERE username = ?', [username]);
+
+  if (!result || result.length === 0) {
+    return false;
+  }
+
+  const user = result[0] as { password: string };
+  return bcrypt.compareSync(password, user.password);
+});
+
+ipcMain.handle('auth:changePassword', async (_event, userId: number, currentPassword: string, newPassword: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  // Verifica a senha atual
+  const result = dbManager.query('SELECT password FROM users WHERE id = ?', [userId]);
+
+  if (!result || result.length === 0) {
+    throw new Error('Usuário não encontrado');
+  }
+
+  const user = result[0] as { password: string };
+  const isPasswordValid = bcrypt.compareSync(currentPassword, user.password);
+
+  if (!isPasswordValid) {
+    throw new Error('Senha atual incorreta');
+  }
+
+  // Hash da nova senha
+  const hashedNewPassword = bcrypt.hashSync(newPassword, 10);
+
+  // Atualiza a senha
+  dbManager.execute(
+    'UPDATE users SET password = ?, updated_at = ? WHERE id = ?',
+    [hashedNewPassword, Date.now(), userId]
+  );
+
+  return true;
+});
+
+// Image File Handlers
+ipcMain.handle('image:selectFile', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Imagens', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] }
+    ],
+    title: 'Selecionar Imagem do Produto'
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+ipcMain.handle('image:save', async (_event, sourceFilePath: string, originalFileName: string) => {
+  const userDataPath = app.getPath('userData');
+  const imagesDir = path.join(userDataPath, 'images');
+
+  // Cria o diretório de imagens se não existir
+  await fs.mkdir(imagesDir, { recursive: true });
+
+  // Gera um nome único para o arquivo usando timestamp
+  const timestamp = Date.now();
+  const fileExtension = path.extname(originalFileName);
+  const uniqueFileName = `product_${timestamp}${fileExtension}`;
+
+  const destinationPath = path.join(imagesDir, uniqueFileName);
+
+  // Copia o arquivo para o diretório de imagens
+  await fs.copyFile(sourceFilePath, destinationPath);
+
+  // Retorna apenas o nome do arquivo (não o caminho completo)
+  return uniqueFileName;
+});
+
+ipcMain.handle('image:delete', async (_event, fileName: string) => {
+  if (!fileName) return;
+
+  const userDataPath = app.getPath('userData');
+  const imagePath = path.join(userDataPath, 'images', fileName);
+
+  try {
+    await fs.unlink(imagePath);
+  } catch (error) {
+    console.error('Erro ao excluir imagem:', error);
+    // Não lança erro se o arquivo não existir
+  }
+});
+
+ipcMain.handle('image:getPath', async (_event, fileName: string) => {
+  if (!fileName) return null;
+
+  const userDataPath = app.getPath('userData');
+  const imagePath = path.join(userDataPath, 'images', fileName);
+
+  try {
+    await fs.access(imagePath);
+    return imagePath;
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle('image:readAsDataURL', async (_event, filePath: string) => {
+  try {
+    const data = await fs.readFile(filePath);
+    const base64 = data.toString('base64');
+    const ext = path.extname(filePath).toLowerCase();
+
+    let mimeType = 'image/jpeg';
+    if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.gif') mimeType = 'image/gif';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.bmp') mimeType = 'image/bmp';
+
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error('Error reading image as data URL:', error);
+    return null;
   }
 });

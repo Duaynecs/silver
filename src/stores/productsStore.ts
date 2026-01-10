@@ -68,8 +68,8 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
       await window.electron.db.execute(
         `INSERT INTO products (barcode, name, description, sale_price,
-         stock_quantity, min_stock, category, company_id, active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         stock_quantity, min_stock, category, image_path, company_id, active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           toNullIfEmpty(product.barcode),
           product.name,
@@ -78,6 +78,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
           product.stockQuantity,
           product.minStock,
           toNullIfEmpty(product.category),
+          toNullIfEmpty(product.imagePath),
           companyId,
           product.active ? 1 : 0,
           now,

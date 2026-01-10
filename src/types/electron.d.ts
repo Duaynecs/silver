@@ -5,6 +5,11 @@ export interface BackupInfo {
   createdAt: number;
 }
 
+export interface BackupPolicy {
+  frequency: number; // em horas
+  retention: number; // quantidade de backups
+}
+
 export interface ElectronAPI {
   db: {
     query: (query: string, params?: any[]) => Promise<any>;
@@ -16,6 +21,22 @@ export interface ElectronAPI {
     list: () => Promise<BackupInfo[]>;
     delete: (filename: string) => Promise<void>;
     getInfo: (filename: string) => Promise<BackupInfo>;
+    selectDirectory: () => Promise<string | null>;
+    setPath: (path: string) => Promise<string>;
+    getPath: () => Promise<string>;
+    getPolicy: () => Promise<BackupPolicy>;
+    setPolicy: (frequency: number, retention: number) => Promise<BackupPolicy>;
+  };
+  auth: {
+    verifyPassword: (username: string, password: string) => Promise<boolean>;
+    changePassword: (userId: number, currentPassword: string, newPassword: string) => Promise<boolean>;
+  };
+  image: {
+    selectFile: () => Promise<string | null>;
+    save: (sourceFilePath: string, originalFileName: string) => Promise<string>;
+    delete: (fileName: string) => Promise<void>;
+    getPath: (fileName: string) => Promise<string | null>;
+    readAsDataURL: (filePath: string) => Promise<string | null>;
   };
   platform: string;
   versions: {

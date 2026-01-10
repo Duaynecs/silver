@@ -18,9 +18,10 @@ import {
 } from '@/components/ui/table';
 import type { CategoryFormData } from '@/schemas/categorySchema';
 import { useCategoriesStore } from '@/stores/categoriesStore';
-import type { Category, CategoryWithChildren } from '@/types';
-import { Edit, Plus, Search, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
+import type { Category, CategoryWithChildren, CategoryWithStats } from '@/types';
+import { Edit, Plus, Search, Trash2, ChevronRight, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { formatCurrency } from '@/utils/format';
 
 export default function Categories() {
   const {
@@ -40,18 +41,57 @@ export default function Categories() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree');
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const [sortBy, setSortBy] = useState<'name' | 'productCount' | 'stockQuantity' | 'stockValue'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
 
-  const filteredCategories = categories.filter((category) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      category.name.toLowerCase().includes(search) ||
-      category.description?.toLowerCase().includes(search)
-    );
-  });
+  const handleSort = (column: 'name' | 'productCount' | 'stockQuantity' | 'stockValue') => {
+    if (sortBy === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const filteredCategories = categories
+    .filter((category) => {
+      const search = searchTerm.toLowerCase();
+      return (
+        category.name.toLowerCase().includes(search) ||
+        category.description?.toLowerCase().includes(search)
+      );
+    })
+    .sort((a, b) => {
+      let aValue: string | number = '';
+      let bValue: string | number = '';
+
+      switch (sortBy) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'productCount':
+          aValue = a.productCount || 0;
+          bValue = b.productCount || 0;
+          break;
+        case 'stockQuantity':
+          aValue = a.stockQuantity || 0;
+          bValue = b.stockQuantity || 0;
+          break;
+        case 'stockValue':
+          aValue = a.stockValue || 0;
+          bValue = b.stockValue || 0;
+          break;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
 
   const handleOpenModal = (category?: Category) => {
     setEditingCategory(category || null);
@@ -107,14 +147,14 @@ export default function Categories() {
     });
   };
 
-  const renderCategoryTree = (category: CategoryWithChildren) => {
+  const renderCategoryTree = (category: CategoryWithChildren): React.ReactNode => {
     const isExpanded = expandedCategories.has(category.id);
     const hasChildren = category.children.length > 0;
     const indentLevel = category.level * 24;
 
     return (
-      <div key={category.id}>
-        <TableRow>
+      <>
+        <TableRow key={category.id}>
           <TableCell>
             <div className="flex items-center" style={{ paddingLeft: `${indentLevel}px` }}>
               {hasChildren && (
@@ -138,6 +178,9 @@ export default function Categories() {
               <span className="text-muted-foreground">-</span>
             )}
           </TableCell>
+          <TableCell className="text-right">{category.productCount || 0}</TableCell>
+          <TableCell className="text-right">{category.stockQuantity || 0}</TableCell>
+          <TableCell className="text-right">{formatCurrency(category.stockValue || 0)}</TableCell>
           <TableCell className="text-right">
             <div className="flex justify-end gap-2">
               <Button
@@ -158,7 +201,7 @@ export default function Categories() {
           </TableCell>
         </TableRow>
         {hasChildren && isExpanded && category.children.map(child => renderCategoryTree(child))}
-      </div>
+      </>
     );
   };
 
@@ -234,8 +277,51 @@ export default function Categories() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nome</TableHead>
+                    <TableHead>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSort('name')}
+                        className="h-8 px-2"
+                      >
+                        Nome
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
                     <TableHead>Descrição</TableHead>
+                    <TableHead className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSort('productCount')}
+                        className="h-8 px-2"
+                      >
+                        Produtos
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSort('stockQuantity')}
+                        className="h-8 px-2"
+                      >
+                        Estoque
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSort('stockValue')}
+                        className="h-8 px-2"
+                      >
+                        Valor
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      </Button>
+                    </TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -252,6 +338,9 @@ export default function Categories() {
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
+                          <TableCell className="text-right">{category.productCount || 0}</TableCell>
+                          <TableCell className="text-right">{category.stockQuantity || 0}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(category.stockValue || 0)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               <Button
@@ -286,6 +375,9 @@ export default function Categories() {
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-right">{category.productCount || 0}</TableCell>
+                        <TableCell className="text-right">{category.stockQuantity || 0}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(category.stockValue || 0)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button

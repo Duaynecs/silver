@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useProductsStore } from '@/stores/productsStore';
 import type { Product } from '@/types';
-import { Search } from 'lucide-react';
+import { Search, Package } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface ProductSelectorProps {
@@ -19,6 +19,7 @@ export default function ProductSelector({
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
+  const [productImages, setProductImages] = useState<Record<number, string>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scanBufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
@@ -35,7 +36,8 @@ export default function ProductSelector({
         (p) =>
           p.name.toLowerCase().includes(search) ||
           p.barcode?.toLowerCase().includes(search) ||
-          p.category?.toLowerCase().includes(search)
+          p.category?.toLowerCase().includes(search) ||
+          p.description?.toLowerCase().includes(search)
       );
       setFilteredProducts(filtered.slice(0, 10)); // Limita a 10 resultados
       setSelectedIndex(0);
@@ -43,6 +45,18 @@ export default function ProductSelector({
       setFilteredProducts([]);
     }
   }, [searchTerm, products]);
+
+  // Load images for filtered products
+  useEffect(() => {
+    const images: Record<number, string> = {};
+    for (const product of filteredProducts) {
+      if (product.imagePath) {
+        // Use custom protocol for serving images
+        images[product.id] = `silver-image://${product.imagePath}`;
+      }
+    }
+    setProductImages(images);
+  }, [filteredProducts]);
 
   // Detector de leitura de código de barras
   useEffect(() => {
@@ -138,7 +152,7 @@ export default function ProductSelector({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Digite o nome ou código do produto..."
+              placeholder="Digite o nome, código ou descrição do produto..."
               className={`pl-10 ${isScanning ? 'ring-2 ring-primary' : ''}`}
               disabled={isScanning}
             />
@@ -183,16 +197,37 @@ export default function ProductSelector({
                   index === selectedIndex ? 'bg-accent' : ''
                 }`}
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
+                <div className="flex gap-3 items-start">
+                  {/* Product Image */}
+                  <div className="flex-shrink-0 w-16 h-16 rounded border bg-muted flex items-center justify-center overflow-hidden">
+                    {productImages[product.id] ? (
+                      <img
+                        src={productImages[product.id]}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Package className="w-8 h-8 text-muted-foreground" />
+                    )}
+                  </div>
+
+                  {/* Product Details */}
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium">{product.name}</div>
-                    <div className="text-sm text-muted-foreground">
+                    {product.description && (
+                      <div className="text-sm text-muted-foreground mt-0.5 truncate">
+                        {product.description}
+                      </div>
+                    )}
+                    <div className="text-sm text-muted-foreground mt-1">
                       {product.barcode && `Código: ${product.barcode} • `}
                       {product.category && `${product.category} • `}
                       Estoque: {product.stockQuantity}
                     </div>
                   </div>
-                  <div className="text-right">
+
+                  {/* Price */}
+                  <div className="text-right flex-shrink-0">
                     <div className="font-bold text-primary">
                       R$ {product.salePrice.toFixed(2)}
                     </div>

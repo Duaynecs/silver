@@ -33,6 +33,7 @@ export interface Product {
   stockQuantity: number;
   minStock: number;
   category?: string;
+  imagePath?: string;
   companyId: number;
   active: boolean;
   createdAt: number;
@@ -80,9 +81,18 @@ export interface Category {
   updatedAt: number;
 }
 
+export interface CategoryWithStats extends Category {
+  productCount?: number;
+  stockQuantity?: number;
+  stockValue?: number;
+}
+
 export interface CategoryWithChildren extends Category {
   children: CategoryWithChildren[];
   level: number;
+  productCount?: number;
+  stockQuantity?: number;
+  stockValue?: number;
 }
 
 export interface CashRegister {

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
+import bcrypt from 'bcrypt';
 
 export class DatabaseManager {
   private db: Database.Database;
@@ -253,12 +254,13 @@ export class DatabaseManager {
       .get() as { count: number };
     if (users.count === 0) {
       const now = Date.now();
-      // Senha padrão: "admin" (em produção, usar bcrypt)
+      // Senha padrão: "admin" - hash com bcrypt
+      const hashedPassword = bcrypt.hashSync('admin', 10);
       this.db
         .prepare(
           'INSERT INTO users (username, password, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
         )
-        .run('admin', 'admin', 'Administrador', now, now);
+        .run('admin', hashedPassword, 'Administrador', now, now);
     }
 
     // Insere configurações padrão se não existirem
@@ -384,6 +386,52 @@ export class DatabaseManager {
           CREATE INDEX IF NOT EXISTS idx_stock_movements_company ON stock_movements(company_id);
         `);
       }
+    }
+
+    // Migração: Adiciona image_path em products
+    const productsTableInfoImage = this.db.prepare("PRAGMA table_info(products)").all() as Array<{name: string}>;
+    const hasImagePathField = productsTableInfoImage.some(col => col.name === 'image_path');
+
+    if (!hasImagePathField) {
+      this.db.exec(`
+        ALTER TABLE products ADD COLUMN image_path TEXT;
+      `);
+    }
+
+    // Migração: Adiciona company_id em settings e remove UNIQUE constraint de key
+    const settingsTableInfo = this.db.prepare("PRAGMA table_info(settings)").all() as Array<{name: string}>;
+    const settingsHasCompanyId = settingsTableInfo.some(col => col.name === 'company_id');
+
+    if (!settingsHasCompanyId && defaultCompany) {
+      const defaultCompanyId = defaultCompany.id;
+
+      // SQLite não permite modificar constraints, então recriamos a tabela
+      this.db.exec(`
+        -- Cria tabela temporária com company_id
+        CREATE TABLE settings_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          company_id INTEGER NOT NULL DEFAULT ${defaultCompanyId},
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+
+        -- Copia dados existentes, associando à empresa padrão
+        INSERT INTO settings_new (id, key, value, company_id, created_at, updated_at)
+        SELECT id, key, value, ${defaultCompanyId}, created_at, updated_at
+        FROM settings;
+
+        -- Remove tabela antiga
+        DROP TABLE settings;
+
+        -- Renomeia nova tabela
+        ALTER TABLE settings_new RENAME TO settings;
+
+        -- Cria índice único composto (key + company_id)
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key_company ON settings(key, company_id);
+        CREATE INDEX IF NOT EXISTS idx_settings_company ON settings(company_id);
+      `);
     }
 
     // Migração: Adiciona campo accepts_change em payment_methods
@@ -532,6 +580,26 @@ export class DatabaseManager {
       this.db.exec(`PRAGMA foreign_keys = ON;`);
 
       console.log('Migração de customers.cpf_cnpj concluída');
+    }
+
+    // Migração: Hash de senhas existentes em plaintext
+    console.log('Verificando senhas em plaintext...');
+    const allUsers = this.db.prepare('SELECT id, password FROM users').all() as Array<{id: number; password: string}>;
+
+    let hashedCount = 0;
+    for (const user of allUsers) {
+      // Verifica se a senha já está hasheada (bcrypt hashes começam com $2a$, $2b$ ou $2y$)
+      if (!user.password.startsWith('$2a$') && !user.password.startsWith('$2b$') && !user.password.startsWith('$2y$')) {
+        // Senha está em plaintext, precisa ser hasheada
+        const hashedPassword = bcrypt.hashSync(user.password, 10);
+        this.db.prepare('UPDATE users SET password = ?, updated_at = ? WHERE id = ?')
+          .run(hashedPassword, Date.now(), user.id);
+        hashedCount++;
+      }
+    }
+
+    if (hashedCount > 0) {
+      console.log(`Migração de senhas concluída: ${hashedCount} senha(s) hasheada(s)`);
     }
   }
 
