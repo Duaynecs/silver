@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Sale, SaleItem, SalePayment, SaleItemInput, PaymentInput } from '@/types';
+import type { SaleItemInput, PaymentInput } from '@/types';
 import { useCompaniesStore } from './companiesStore';
 
 interface SalesState {

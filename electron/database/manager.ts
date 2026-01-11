@@ -2,15 +2,27 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
 import bcrypt from 'bcrypt';
+import { MigrationManager } from './migrationManager';
+import { ProtocolManager } from './protocolManager';
+import { join } from 'path';
 
 export class DatabaseManager {
   private db: Database.Database;
   private orm: ReturnType<typeof drizzle>;
+  private migrationManager: MigrationManager;
+  private protocolManager: ProtocolManager;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.orm = drizzle(this.db, { schema });
+
+    // Inicializa o sistema de migrations
+    const migrationsPath = join(__dirname, 'migrations');
+    this.migrationManager = new MigrationManager(this.db, migrationsPath);
+
+    // Inicializa o gerenciador de protocolos
+    this.protocolManager = new ProtocolManager(this.db);
 
     this.initialize();
   }
@@ -582,6 +594,59 @@ export class DatabaseManager {
       console.log('Migração de customers.cpf_cnpj concluída');
     }
 
+    // Migração similar para categories
+    const existingCategoryIndexes = this.db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='categories'").all() as Array<{name: string}>;
+    const needsCategoriesMigration = !existingCategoryIndexes.some(idx => idx.name === 'idx_categories_company_name');
+
+    if (needsCategoriesMigration) {
+      console.log('Iniciando migração: Alterando UNIQUE constraint de categories.name para company-scoped');
+
+      // Desabilita foreign keys temporariamente para permitir DROP TABLE
+      this.db.exec(`PRAGMA foreign_keys = OFF;`);
+
+      // Remove tabela temporária se existir de migração anterior falha
+      this.db.exec(`DROP TABLE IF EXISTS categories_new;`);
+
+      // Cria nova tabela categories com constraint correta
+      this.db.exec(`
+        CREATE TABLE categories_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_id INTEGER NOT NULL REFERENCES companies(id),
+          name TEXT NOT NULL,
+          description TEXT,
+          parent_id INTEGER,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE(company_id, name)
+        );
+      `);
+
+      // Copia dados da tabela antiga
+      this.db.exec(`
+        INSERT INTO categories_new (id, company_id, name, description, parent_id, active, created_at, updated_at)
+        SELECT id, company_id, name, description, parent_id, active, created_at, updated_at
+        FROM categories;
+      `);
+
+      // Remove tabela antiga e renomeia nova
+      this.db.exec(`
+        DROP TABLE categories;
+        ALTER TABLE categories_new RENAME TO categories;
+      `);
+
+      // Recria índices
+      this.db.exec(`
+        CREATE INDEX idx_categories_company_name ON categories(company_id, name);
+        CREATE INDEX IF NOT EXISTS idx_categories_company ON categories(company_id);
+      `);
+
+      // Re-habilita foreign keys
+      this.db.exec(`PRAGMA foreign_keys = ON;`);
+
+      console.log('Migração de categories.name concluída');
+    }
+
     // Migração: Hash de senhas existentes em plaintext
     console.log('Verificando senhas em plaintext...');
     const allUsers = this.db.prepare('SELECT id, password FROM users').all() as Array<{id: number; password: string}>;
@@ -601,6 +666,28 @@ export class DatabaseManager {
     if (hashedCount > 0) {
       console.log(`Migração de senhas concluída: ${hashedCount} senha(s) hasheada(s)`);
     }
+
+    // Executa migrations pendentes
+    this.runMigrations();
+  }
+
+  private runMigrations() {
+    try {
+      console.log('Verificando migrations pendentes...');
+      this.migrationManager.runPendingMigrations();
+      console.log('✓ Migrations concluídas');
+    } catch (error) {
+      console.error('✗ Erro ao executar migrations:', error);
+      throw error;
+    }
+  }
+
+  getProtocolManager(): ProtocolManager {
+    return this.protocolManager;
+  }
+
+  getMigrationManager(): MigrationManager {
+    return this.migrationManager;
   }
 
   query(sql: string, params: any[] = []) {

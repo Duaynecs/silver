@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useReportsStore } from '@/stores/reportsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { TrendingUp, ShoppingCart, CreditCard, Package, Calendar, Percent, Users, Eye } from 'lucide-react';
+import { TrendingUp, ShoppingCart, CreditCard, Package, Calendar, Percent, Users, Eye, FileText } from 'lucide-react';
 import SaleDetailsModal from '@/components/reports/SaleDetailsModal';
 
 export default function Reports() {
@@ -25,6 +26,7 @@ export default function Reports() {
   } = useReportsStore();
 
   const { commissionPercentage, fetchSettings } = useSettingsStore();
+  const navigate = useNavigate();
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -132,6 +134,36 @@ export default function Reports() {
             </div>
             <Button onClick={loadReports} disabled={loading || !startDate || !endDate}>
               {loading ? 'Carregando...' : 'Atualizar'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Relatório de Cliente */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Relatório de Cliente
+          </CardTitle>
+          <CardDescription>
+            Análise detalhada de vendas por cliente individual
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Visualize o histórico completo de compras de cada cliente, incluindo produtos adquiridos,
+                formas de pagamento utilizadas e estatísticas de compra.
+              </p>
+            </div>
+            <Button
+              onClick={() => navigate('/reports/customers')}
+              className="flex items-center gap-2 ml-4"
+            >
+              <FileText className="w-4 h-4" />
+              Abrir Relatório
             </Button>
           </div>
         </CardContent>

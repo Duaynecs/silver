@@ -23,7 +23,6 @@ export default function Sales() {
     setCustomer,
     addPayment,
     removePayment,
-    getTotalItems,
     getFinalAmount,
     getRemainingAmount,
     getChangeAmount,

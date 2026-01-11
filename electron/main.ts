@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { DatabaseManager } from './database/manager';
+import { DataCloning, type CloningOptions } from './database/cloning';
 import bcrypt from 'bcrypt';
 
 let mainWindow: BrowserWindow | null = null;
@@ -533,6 +534,32 @@ ipcMain.handle('auth:changePassword', async (_event, userId: number, currentPass
   return true;
 });
 
+// Data Cloning Handlers
+ipcMain.handle('cloning:cloneData', async (_event, sourceCompanyId: number, targetCompanyId: number, options: CloningOptions) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    const cloning = new DataCloning(dbManager);
+
+    const report = await cloning.cloneData(
+      sourceCompanyId,
+      targetCompanyId,
+      options,
+      (message: string) => {
+        // Envia progresso de volta para o renderer
+        if (mainWindow) {
+          mainWindow.webContents.send('cloning:progress', message);
+        }
+      }
+    );
+
+    return report;
+  } catch (error: any) {
+    console.error('Erro na clonagem de dados:', error);
+    throw new Error(error.message || 'Erro ao clonar dados');
+  }
+});
+
 // Image File Handlers
 ipcMain.handle('image:selectFile', async () => {
   const result = await dialog.showOpenDialog({
@@ -615,5 +642,143 @@ ipcMain.handle('image:readAsDataURL', async (_event, filePath: string) => {
   } catch (error) {
     console.error('Error reading image as data URL:', error);
     return null;
+  }
+});
+
+// Inventory Handlers
+ipcMain.handle('inventory:zeroAllStock', async (_event, companyId: number) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    if (!companyId) {
+      throw new Error('Company ID is required');
+    }
+
+    // Busca todos os produtos com estoque > 0 DA EMPRESA SELECIONADA
+    const productsWithStock = dbManager.query(
+      'SELECT id, stock_quantity FROM products WHERE company_id = ? AND stock_quantity > 0 AND active = 1',
+      [companyId]
+    ) as Array<{ id: number; stock_quantity: number }>;
+
+    if (!productsWithStock || productsWithStock.length === 0) {
+      return { affectedProducts: 0, protocolNumber: null };
+    }
+
+    // Prepara os movimentos (zera todos os estoques)
+    const movements = productsWithStock.map(product => ({
+      productId: product.id,
+      quantityChanged: -product.stock_quantity
+    }));
+
+    // Cria o protocolo
+    const protocolManager = dbManager.getProtocolManager();
+    const protocolNumber = protocolManager.createProtocol('zero_stock', movements, {
+      notes: `Estoque zerado manualmente - Todos os produtos (Empresa ID: ${companyId})`
+    });
+
+    return {
+      affectedProducts: productsWithStock.length,
+      protocolNumber
+    };
+  } catch (error: any) {
+    console.error('Erro ao zerar estoque:', error);
+    throw new Error(error.message || 'Erro ao zerar estoque');
+  }
+});
+
+ipcMain.handle('inventory:zeroStockByCategory', async (_event, companyId: number, category: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    if (!companyId) {
+      throw new Error('Company ID is required');
+    }
+
+    // Busca produtos da categoria com estoque > 0 DA EMPRESA SELECIONADA
+    const productsWithStock = dbManager.query(
+      'SELECT id, stock_quantity FROM products WHERE company_id = ? AND category = ? AND stock_quantity > 0 AND active = 1',
+      [companyId, category]
+    ) as Array<{ id: number; stock_quantity: number }>;
+
+    if (!productsWithStock || productsWithStock.length === 0) {
+      return { affectedProducts: 0, protocolNumber: null };
+    }
+
+    // Prepara os movimentos (zera estoques da categoria)
+    const movements = productsWithStock.map(product => ({
+      productId: product.id,
+      quantityChanged: -product.stock_quantity
+    }));
+
+    // Cria o protocolo
+    const protocolManager = dbManager.getProtocolManager();
+    const protocolNumber = protocolManager.createProtocol('zero_stock', movements, {
+      notes: `Estoque zerado manualmente - Categoria: ${category} (Empresa ID: ${companyId})`
+    });
+
+    return {
+      affectedProducts: productsWithStock.length,
+      protocolNumber
+    };
+  } catch (error: any) {
+    console.error('Erro ao zerar estoque por categoria:', error);
+    throw new Error(error.message || 'Erro ao zerar estoque por categoria');
+  }
+});
+
+// Stock Protocol Handlers
+ipcMain.handle('protocol:list', async (_event, filters?: {
+  type?: string;
+  status?: string;
+  startDate?: number;
+  endDate?: number;
+  limit?: number;
+  offset?: number;
+}) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    const protocolManager = dbManager.getProtocolManager();
+    return protocolManager.listProtocols(filters);
+  } catch (error: any) {
+    console.error('Erro ao listar protocolos:', error);
+    throw new Error(error.message || 'Erro ao listar protocolos');
+  }
+});
+
+ipcMain.handle('protocol:get', async (_event, protocolNumber: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    const protocolManager = dbManager.getProtocolManager();
+    return protocolManager.getProtocol(protocolNumber);
+  } catch (error: any) {
+    console.error('Erro ao buscar protocolo:', error);
+    throw new Error(error.message || 'Erro ao buscar protocolo');
+  }
+});
+
+ipcMain.handle('protocol:cancel', async (_event, protocolNumber: string, cancelledBy?: number) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    const protocolManager = dbManager.getProtocolManager();
+    protocolManager.cancelProtocol(protocolNumber, cancelledBy);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Erro ao cancelar protocolo:', error);
+    throw new Error(error.message || 'Erro ao cancelar protocolo');
+  }
+});
+
+ipcMain.handle('protocol:getByReference', async (_event, referenceType: string, referenceId: number) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  try {
+    const protocolManager = dbManager.getProtocolManager();
+    return protocolManager.getProtocolsByReference(referenceType, referenceId);
+  } catch (error: any) {
+    console.error('Erro ao buscar protocolos por referência:', error);
+    throw new Error(error.message || 'Erro ao buscar protocolos por referência');
   }
 });

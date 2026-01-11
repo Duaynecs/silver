@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useBackupStore } from '@/stores/backupStore';
-import { Download, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export default function Backup() {

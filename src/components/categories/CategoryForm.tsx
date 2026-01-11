@@ -1,7 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
   categorySchema,
@@ -9,7 +15,7 @@ import {
 } from '@/schemas/categorySchema';
 import type { Category } from '@/types';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { useCategoriesStore } from '@/stores/categoriesStore';
 
 interface CategoryFormProps {
@@ -35,6 +41,7 @@ export default function CategoryForm({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<CategoryFormData>({
     resolver: zodResolver(categorySchema),
@@ -69,17 +76,28 @@ export default function CategoryForm({
 
       <div className="space-y-2">
         <Label htmlFor="parentId">Categoria Pai (Opcional)</Label>
-        <Select
-          id="parentId"
-          {...register('parentId', { valueAsNumber: true })}
-        >
-          <option value="">Nenhuma (Categoria raiz)</option>
-          {availableParentCategories.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.name}
-            </option>
-          ))}
-        </Select>
+        <Controller
+          name="parentId"
+          control={control}
+          render={({ field }) => (
+            <Select
+              value={field.value?.toString() || "none"}
+              onValueChange={(value) => field.onChange(value === "none" ? undefined : parseInt(value, 10))}
+            >
+              <SelectTrigger id="parentId">
+                <SelectValue placeholder="Nenhuma (Categoria raiz)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma (Categoria raiz)</SelectItem>
+                {availableParentCategories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id.toString()}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
         <p className="text-xs text-muted-foreground">
           Selecione uma categoria pai para criar uma subcategoria
         </p>

@@ -1,7 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -69,7 +75,13 @@ export default function PaymentSelector({
     if (!paymentMethod.acceptsChange) {
       const epsilon = 0.01;
       if (paymentAmount > remainingAmount + epsilon) {
-        alert(`Valor do pagamento (R$ ${paymentAmount.toFixed(2)}) maior que o valor restante (R$ ${remainingAmount.toFixed(2)}). Esta forma de pagamento não aceita troco.`);
+        alert(
+          `Valor do pagamento (R$ ${paymentAmount.toFixed(
+            2
+          )}) maior que o valor restante (R$ ${remainingAmount.toFixed(
+            2
+          )}). Esta forma de pagamento não aceita troco.`
+        );
         return;
       }
     }
@@ -92,16 +104,20 @@ export default function PaymentSelector({
         <div className="space-y-2">
           <Label className="text-xs">Forma de Pagamento</Label>
           <Select
-            value={selectedMethodId}
-            onChange={(e) => setSelectedMethodId(e.target.value)}
-            className="h-9"
+            value={selectedMethodId || "none"}
+            onValueChange={(value) => setSelectedMethodId(value === "none" ? "" : value)}
           >
-            <option value="">Selecione...</option>
-            {paymentMethods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.name}
-              </option>
-            ))}
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Selecione...</SelectItem>
+              {paymentMethods.map((method) => (
+                <SelectItem key={method.id} value={method.id.toString()}>
+                  {method.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
 

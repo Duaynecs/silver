@@ -10,6 +10,27 @@ export interface BackupPolicy {
   retention: number; // quantidade de backups
 }
 
+export interface CloningResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+}
+
+export interface CloningReport {
+  categories: CloningResult;
+  products: CloningResult;
+  customers: CloningResult;
+  paymentMethods: CloningResult;
+}
+
+export interface CloningOptions {
+  categories: boolean;
+  products: boolean;
+  customers: boolean;
+  paymentMethods: boolean;
+  updateMode: 'insert' | 'upsert';
+}
+
 export interface ElectronAPI {
   db: {
     query: (query: string, params?: any[]) => Promise<any>;
@@ -37,6 +58,26 @@ export interface ElectronAPI {
     delete: (fileName: string) => Promise<void>;
     getPath: (fileName: string) => Promise<string | null>;
     readAsDataURL: (filePath: string) => Promise<string | null>;
+  };
+  cloning: {
+    cloneData: (sourceCompanyId: number, targetCompanyId: number, options: CloningOptions) => Promise<CloningReport>;
+  };
+  inventory: {
+    zeroAllStock: (companyId: number) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
+    zeroStockByCategory: (companyId: number, category: string) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
+  };
+  protocol: {
+    list: (filters?: {
+      type?: string;
+      status?: string;
+      startDate?: number;
+      endDate?: number;
+      limit?: number;
+      offset?: number;
+    }) => Promise<any[]>;
+    get: (protocolNumber: string) => Promise<any | null>;
+    cancel: (protocolNumber: string, cancelledBy?: number) => Promise<{ success: boolean }>;
+    getByReference: (referenceType: string, referenceId: number) => Promise<any[]>;
   };
   platform: string;
   versions: {

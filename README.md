@@ -79,16 +79,3 @@ silver/
 ## Desenvolvimento
 
 O projeto está estruturado para facilitar o desenvolvimento incremental. As páginas principais já estão criadas e conectadas ao sistema de roteamento.
-
-### Próximos Passos
-
-1. Implementar CRUD completo de Produtos
-2. Implementar CRUD completo de Clientes
-3. Desenvolver tela de PDV (Vendas)
-4. Implementar controle de Inventário
-5. Criar Relatórios detalhados
-6. Adicionar configurações do sistema
-
-## Licença
-
-MIT

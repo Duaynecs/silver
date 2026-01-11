@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   customerSchema,
@@ -8,10 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import CpfCnpjInput from '@/components/customers/CpfCnpjInput';
 import type { Customer } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface CustomerFormProps {
@@ -71,6 +77,7 @@ export default function CustomerForm({
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors },
   } = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
@@ -116,29 +123,7 @@ export default function CustomerForm({
     return () => clearTimeout(timer);
   }, []);
 
-  // Busca endereço por CEP
-  useEffect(() => {
-    if (isInitialLoad) return; // Não busca no load inicial
-
-    const cleanCep = zipCode?.replace(/\D/g, '');
-    if (cleanCep && cleanCep.length === 8 && cleanCep !== lastCep) {
-      setLastCep(cleanCep);
-      fetchAddressByCep(cleanCep);
-    }
-  }, [zipCode]);
-
-  // Busca dados por CNPJ
-  useEffect(() => {
-    if (isInitialLoad) return; // Não busca no load inicial
-
-    const cleanCnpj = cpfCnpj?.replace(/\D/g, '');
-    if (cleanCnpj && cleanCnpj.length === 14 && cleanCnpj !== lastCnpj) {
-      setLastCnpj(cleanCnpj);
-      fetchDataByCnpj(cleanCnpj);
-    }
-  }, [cpfCnpj]);
-
-  const fetchAddressByCep = async (cep: string) => {
+  const fetchAddressByCep = useCallback(async (cep: string) => {
     setFetchingCep(true);
     setCepMessage('');
     try {
@@ -166,9 +151,9 @@ export default function CustomerForm({
     } finally {
       setFetchingCep(false);
     }
-  };
+  }, [setValue]);
 
-  const fetchDataByCnpj = async (cnpj: string) => {
+  const fetchDataByCnpj = useCallback(async (cnpj: string) => {
     setFetchingCnpj(true);
     setCnpjMessage('');
     try {
@@ -199,7 +184,29 @@ export default function CustomerForm({
     } finally {
       setFetchingCnpj(false);
     }
-  };
+  }, [setValue]);
+
+  // Busca endereço por CEP
+  useEffect(() => {
+    if (isInitialLoad) return; // Não busca no load inicial
+
+    const cleanCep = zipCode?.replace(/\D/g, '');
+    if (cleanCep && cleanCep.length === 8 && cleanCep !== lastCep) {
+      setLastCep(cleanCep);
+      fetchAddressByCep(cleanCep);
+    }
+  }, [zipCode, isInitialLoad, lastCep, fetchAddressByCep]);
+
+  // Busca dados por CNPJ
+  useEffect(() => {
+    if (isInitialLoad) return; // Não busca no load inicial
+
+    const cleanCnpj = cpfCnpj?.replace(/\D/g, '');
+    if (cleanCnpj && cleanCnpj.length === 14 && cleanCnpj !== lastCnpj) {
+      setLastCnpj(cleanCnpj);
+      fetchDataByCnpj(cleanCnpj);
+    }
+  }, [cpfCnpj, isInitialLoad, lastCnpj, fetchDataByCnpj]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -361,14 +368,28 @@ export default function CustomerForm({
 
         <div className="space-y-2">
           <Label htmlFor="state">Estado</Label>
-          <Select id="state" {...register('state')}>
-            <option value="">Selecione...</option>
-            {STATES.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </Select>
+          <Controller
+            name="state"
+            control={control}
+            render={({ field }) => (
+              <Select
+                value={field.value || "none"}
+                onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+              >
+                <SelectTrigger id="state">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Selecione...</SelectItem>
+                  {STATES.map((state) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {errors.state && (
             <p className="text-sm text-destructive">{errors.state.message}</p>
           )}

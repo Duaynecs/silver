@@ -132,13 +132,6 @@ export default function ProductSelector({
     }
   };
 
-  const handleStartScan = () => {
-    setIsScanning(true);
-    scanBufferRef.current = '';
-    lastKeyTimeRef.current = 0;
-    setTimeout(() => setIsScanning(false), 10000);
-  };
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-[1fr,auto,100px] gap-2">

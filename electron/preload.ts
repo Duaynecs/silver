@@ -56,6 +56,37 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('image:readAsDataURL', filePath),
   },
 
+  // Data cloning operations
+  cloning: {
+    cloneData: (sourceCompanyId: number, targetCompanyId: number, options: any) =>
+      ipcRenderer.invoke('cloning:cloneData', sourceCompanyId, targetCompanyId, options),
+  },
+
+  // Inventory operations
+  inventory: {
+    zeroAllStock: (companyId: number) =>
+      ipcRenderer.invoke('inventory:zeroAllStock', companyId),
+    zeroStockByCategory: (companyId: number, category: string) =>
+      ipcRenderer.invoke('inventory:zeroStockByCategory', companyId, category),
+  },
+
+  // Protocol operations
+  protocol: {
+    list: (filters?: {
+      type?: string;
+      status?: string;
+      startDate?: number;
+      endDate?: number;
+      limit?: number;
+      offset?: number;
+    }) => ipcRenderer.invoke('protocol:list', filters),
+    get: (protocolNumber: string) => ipcRenderer.invoke('protocol:get', protocolNumber),
+    cancel: (protocolNumber: string, cancelledBy?: number) =>
+      ipcRenderer.invoke('protocol:cancel', protocolNumber, cancelledBy),
+    getByReference: (referenceType: string, referenceId: number) =>
+      ipcRenderer.invoke('protocol:getByReference', referenceType, referenceId),
+  },
+
   // Platform info
   platform: process.platform,
 
@@ -107,6 +138,26 @@ export interface ElectronAPI {
     delete: (fileName: string) => Promise<void>;
     getPath: (fileName: string) => Promise<string | null>;
     readAsDataURL: (filePath: string) => Promise<string | null>;
+  };
+  cloning: {
+    cloneData: (sourceCompanyId: number, targetCompanyId: number, options: any) => Promise<any>;
+  };
+  inventory: {
+    zeroAllStock: (companyId: number) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
+    zeroStockByCategory: (companyId: number, category: string) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
+  };
+  protocol: {
+    list: (filters?: {
+      type?: string;
+      status?: string;
+      startDate?: number;
+      endDate?: number;
+      limit?: number;
+      offset?: number;
+    }) => Promise<any[]>;
+    get: (protocolNumber: string) => Promise<any | null>;
+    cancel: (protocolNumber: string, cancelledBy?: number) => Promise<{ success: boolean }>;
+    getByReference: (referenceType: string, referenceId: number) => Promise<any[]>;
   };
   platform: string;
   versions: {

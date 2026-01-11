@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/table';
 import type { CategoryFormData } from '@/schemas/categorySchema';
 import { useCategoriesStore } from '@/stores/categoriesStore';
-import type { Category, CategoryWithChildren, CategoryWithStats } from '@/types';
+import type { Category, CategoryWithChildren } from '@/types';
 import { Edit, Plus, Search, Trash2, ChevronRight, ChevronDown, ArrowUpDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { formatCurrency } from '@/utils/format';
 
 export default function Categories() {
@@ -200,7 +200,11 @@ export default function Categories() {
             </div>
           </TableCell>
         </TableRow>
-        {hasChildren && isExpanded && category.children.map(child => renderCategoryTree(child))}
+        {hasChildren && isExpanded && category.children.map(child => (
+          <Fragment key={child.id}>
+            {renderCategoryTree(child)}
+          </Fragment>
+        ))}
       </>
     );
   };
@@ -362,7 +366,11 @@ export default function Categories() {
                         </TableRow>
                       ))
                     ) : (
-                      categoriesTree.map(category => renderCategoryTree(category))
+                      categoriesTree.map(category => (
+                        <Fragment key={category.id}>
+                          {renderCategoryTree(category)}
+                        </Fragment>
+                      ))
                     )
                   ) : (
                     filteredCategories.map((category) => (

@@ -1,29 +1,34 @@
 import { useState, useEffect } from 'react';
 import { useProductsStore } from '@/stores/productsStore';
 import { useStockMovementsStore } from '@/stores/stockMovementsStore';
+import { useCategoriesStore } from '@/stores/categoriesStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PackagePlus, PackageCheck, Search, AlertTriangle, History } from 'lucide-react';
+import { PackagePlus, PackageCheck, Search, AlertTriangle, History, Trash2 } from 'lucide-react';
 import StockEntryModal from '@/components/inventory/StockEntryModal';
 import StockAdjustmentModal from '@/components/inventory/StockAdjustmentModal';
+import ZeroStockModal from '@/components/inventory/ZeroStockModal';
 import type { Product } from '@/types';
 
 export default function Inventory() {
   const { products, loading, fetchProducts } = useProductsStore();
   const { movements, fetchMovements } = useStockMovementsStore();
+  const { fetchCategories } = useCategoriesStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [entryModalOpen, setEntryModalOpen] = useState(false);
   const [adjustmentModalOpen, setAdjustmentModalOpen] = useState(false);
+  const [zeroStockModalOpen, setZeroStockModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | undefined>();
   const [showMovements, setShowMovements] = useState(false);
 
   useEffect(() => {
     fetchProducts();
     fetchMovements();
-  }, [fetchProducts, fetchMovements]);
+    fetchCategories();
+  }, [fetchProducts, fetchMovements, fetchCategories]);
 
   const filteredProducts = products.filter((product) => {
     const search = searchTerm.toLowerCase();
@@ -54,6 +59,11 @@ export default function Inventory() {
     fetchProducts();
     fetchMovements();
     setSelectedProduct(undefined);
+  };
+
+  const handleZeroStockSuccess = () => {
+    fetchProducts();
+    fetchMovements();
   };
 
   const formatDate = (timestamp: number) => {
@@ -98,6 +108,10 @@ export default function Inventory() {
           <Button variant="outline" onClick={() => handleAdjustmentClick()}>
             <PackageCheck className="w-4 h-4 mr-2" />
             Ajuste de Estoque
+          </Button>
+          <Button variant="destructive" onClick={() => setZeroStockModalOpen(true)}>
+            <Trash2 className="w-4 h-4 mr-2" />
+            Zerar Estoque
           </Button>
         </div>
       </div>
@@ -343,6 +357,12 @@ export default function Inventory() {
         onOpenChange={setAdjustmentModalOpen}
         onSuccess={handleModalSuccess}
         preSelectedProduct={selectedProduct}
+      />
+
+      <ZeroStockModal
+        open={zeroStockModalOpen}
+        onOpenChange={setZeroStockModalOpen}
+        onSuccess={handleZeroStockSuccess}
       />
     </div>
   );

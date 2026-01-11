@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useProductsStore } from '@/stores/productsStore';
 import { generateEAN13FromSequence, validateEAN } from '@/utils/barcode';
-import { Barcode, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface BarcodeInputProps {
@@ -80,13 +80,6 @@ export default function BarcodeInput({
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
   }, [isScanning, onChange]);
-
-  const handleStartScan = () => {
-    setIsScanning(true);
-    scanBufferRef.current = '';
-    lastKeyTimeRef.current = 0;
-    setTimeout(() => setIsScanning(false), 10000); // Auto-desativa após 10s
-  };
 
   const handleManualChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Remove caracteres não numéricos

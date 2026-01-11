@@ -9,7 +9,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { CategoryFormData } from '@/schemas/categorySchema';
 import { productSchema, type ProductFormData } from '@/schemas/productSchema';
@@ -18,7 +24,7 @@ import type { Product } from '@/types';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Image as ImageIcon, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 
 interface ProductFormProps {
   product?: Product;
@@ -46,6 +52,7 @@ export default function ProductForm({
     handleSubmit,
     setValue,
     watch,
+    control,
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -197,22 +204,28 @@ export default function ProductForm({
           <div className="space-y-2">
             <Label htmlFor="category">Categoria</Label>
             <div className="flex gap-2">
-              <Select
-                id="category"
-                {...register('category')}
-                value={watch('category') || ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setValue('category', e.target.value)
-                }
-                className="flex-1"
-              >
-                <option value="">Selecione uma categoria</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-              </Select>
+              <Controller
+                name="category"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value || "none"}
+                    onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                  >
+                    <SelectTrigger id="category" className="flex-1">
+                      <SelectValue placeholder="Selecione uma categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Selecione uma categoria</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               <Button
                 type="button"
                 variant="outline"

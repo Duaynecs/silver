@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Settings as SettingsIcon, Percent, Save, Lock, Key, FolderOpen } from 'lucide-react';
+import { Settings as SettingsIcon, Percent, Save, Lock, Key, FolderOpen, Copy } from 'lucide-react';
 import ChangePasswordModal from '@/components/auth/ChangePasswordModal';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { commissionPercentage, loading, fetchSettings, updateCommissionPercentage } = useSettingsStore();
   const [localCommission, setLocalCommission] = useState('0');
   const [isSaving, setIsSaving] = useState(false);
@@ -305,6 +307,37 @@ export default function Settings() {
             >
               <Lock className="w-4 h-4" />
               Alterar Senha
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Ferramentas Administrativas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Copy className="w-5 h-5" />
+            Ferramentas Administrativas
+          </CardTitle>
+          <CardDescription>
+            Ferramentas avançadas para gerenciamento do sistema
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="space-y-1">
+              <h3 className="font-medium">Clonagem de Dados</h3>
+              <p className="text-sm text-muted-foreground">
+                Copie categorias, produtos, clientes e formas de pagamento entre empresas
+              </p>
+            </div>
+            <Button
+              onClick={() => navigate('/data-cloning')}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              Abrir Clonagem
             </Button>
           </div>
         </CardContent>

@@ -128,3 +128,26 @@ export const settings = sqliteTable('settings', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
+
+export const stockProtocols = sqliteTable('stock_protocols', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  protocolNumber: text('protocol_number').notNull().unique(),
+  type: text('type').notNull(), // 'sale' | 'purchase' | 'adjustment' | 'zero_stock' | 'inventory'
+  status: text('status').notNull().default('active'), // 'active' | 'cancelled'
+  referenceId: integer('reference_id'),
+  referenceType: text('reference_type'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  cancelledAt: integer('cancelled_at', { mode: 'timestamp' }),
+  cancelledBy: integer('cancelled_by'),
+  notes: text('notes'),
+});
+
+export const stockProtocolMovements = sqliteTable('stock_protocol_movements', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  protocolId: integer('protocol_id').notNull(),
+  productId: integer('product_id').notNull(),
+  quantityBefore: real('quantity_before').notNull(),
+  quantityAfter: real('quantity_after').notNull(),
+  quantityChanged: real('quantity_changed').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
