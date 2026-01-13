@@ -10,6 +10,7 @@ import Inventory from '@/pages/Inventory';
 import Login from '@/pages/Login';
 import PaymentMethods from '@/pages/PaymentMethods';
 import Products from '@/pages/Products';
+import Protocols from '@/pages/Protocols';
 import Reports from '@/pages/Reports';
 import Sales from '@/pages/Sales';
 import Settings from '@/pages/Settings';
@@ -49,6 +50,7 @@ function App() {
                   <Route path="/inventory" element={<Inventory />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/reports/customers" element={<CustomerReport />} />
+                  <Route path="/protocols" element={<Protocols />} />
                   <Route path="/payment-methods" element={<PaymentMethods />} />
                   <Route path="/companies" element={<Companies />} />
                   <Route path="/data-cloning" element={<DataCloning />} />

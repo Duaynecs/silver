@@ -36,6 +36,39 @@ export class ProtocolManager {
   }
 
   /**
+   * Converte dados do banco (snake_case) para formato TypeScript (camelCase)
+   */
+  private mapProtocol(row: any): StockProtocol {
+    return {
+      id: row.id,
+      protocolNumber: row.protocol_number,
+      type: row.type,
+      status: row.status,
+      referenceId: row.reference_id,
+      referenceType: row.reference_type,
+      createdAt: row.created_at,
+      cancelledAt: row.cancelled_at,
+      cancelledBy: row.cancelled_by,
+      notes: row.notes,
+    };
+  }
+
+  /**
+   * Converte dados de movimento do banco (snake_case) para formato TypeScript (camelCase)
+   */
+  private mapMovement(row: any): StockProtocolMovement {
+    return {
+      id: row.id,
+      protocolId: row.protocol_id,
+      productId: row.product_id,
+      quantityBefore: row.quantity_before,
+      quantityAfter: row.quantity_after,
+      quantityChanged: row.quantity_changed,
+      createdAt: row.created_at,
+    };
+  }
+
+  /**
    * Gera um número de protocolo único
    */
   private generateProtocolNumber(): string {
@@ -143,22 +176,26 @@ export class ProtocolManager {
     const now = Date.now();
 
     // Busca o protocolo
-    const protocol = this.db.prepare(
+    const row = this.db.prepare(
       'SELECT * FROM stock_protocols WHERE protocol_number = ?'
-    ).get(protocolNumber) as StockProtocol | undefined;
+    ).get(protocolNumber);
 
-    if (!protocol) {
+    if (!row) {
       throw new Error(`Protocol ${protocolNumber} not found`);
     }
+
+    const protocol = this.mapProtocol(row);
 
     if (protocol.status === 'cancelled') {
       throw new Error(`Protocol ${protocolNumber} is already cancelled`);
     }
 
     // Busca os movimentos do protocolo
-    const movements = this.db.prepare(
+    const movementRows = this.db.prepare(
       'SELECT * FROM stock_protocol_movements WHERE protocol_id = ?'
-    ).all(protocol.id) as StockProtocolMovement[];
+    ).all(protocol.id);
+
+    const movements = movementRows.map(row => this.mapMovement(row));
 
     // Inicia transação para reverter
     const transaction = this.db.transaction(() => {
@@ -200,17 +237,21 @@ export class ProtocolManager {
    * Busca um protocolo por número
    */
   getProtocol(protocolNumber: string): (StockProtocol & { movements: StockProtocolMovement[] }) | null {
-    const protocol = this.db.prepare(
+    const row = this.db.prepare(
       'SELECT * FROM stock_protocols WHERE protocol_number = ?'
-    ).get(protocolNumber) as StockProtocol | undefined;
+    ).get(protocolNumber);
 
-    if (!protocol) {
+    if (!row) {
       return null;
     }
 
-    const movements = this.db.prepare(
+    const protocol = this.mapProtocol(row);
+
+    const movementRows = this.db.prepare(
       'SELECT * FROM stock_protocol_movements WHERE protocol_id = ?'
-    ).all(protocol.id) as StockProtocolMovement[];
+    ).all(protocol.id);
+
+    const movements = movementRows.map(row => this.mapMovement(row));
 
     return {
       ...protocol,
@@ -264,15 +305,17 @@ export class ProtocolManager {
       params.push(filters.offset);
     }
 
-    return this.db.prepare(query).all(...params) as StockProtocol[];
+    const rows = this.db.prepare(query).all(...params);
+    return rows.map(row => this.mapProtocol(row));
   }
 
   /**
    * Busca protocolos por referência
    */
   getProtocolsByReference(referenceType: string, referenceId: number): StockProtocol[] {
-    return this.db.prepare(
+    const rows = this.db.prepare(
       'SELECT * FROM stock_protocols WHERE reference_type = ? AND reference_id = ? ORDER BY created_at DESC'
-    ).all(referenceType, referenceId) as StockProtocol[];
+    ).all(referenceType, referenceId);
+    return rows.map(row => this.mapProtocol(row));
   }
 }

@@ -20,6 +20,7 @@ import {
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useCategoriesStore } from '@/stores/categoriesStore';
 import { useProductsStore } from '@/stores/productsStore';
+import { useCompaniesStore } from '@/stores/companiesStore';
 
 interface ZeroStockModalProps {
   open: boolean;
@@ -34,6 +35,7 @@ export default function ZeroStockModal({
 }: ZeroStockModalProps) {
   const { categories } = useCategoriesStore();
   const { products } = useProductsStore();
+  const { currentCompanyId } = useCompaniesStore();
 
   const [step, setStep] = useState(1);
   const [scope, setScope] = useState<'all' | 'category'>('all');
@@ -88,6 +90,11 @@ export default function ZeroStockModal({
   };
 
   const handleConfirm = async () => {
+    if (!currentCompanyId) {
+      alert('Nenhuma empresa selecionada. Por favor, selecione uma empresa antes de zerar o estoque.');
+      return;
+    }
+
     if (confirmationText !== CONFIRMATION_PHRASE) {
       alert(`Digite exatamente: ${CONFIRMATION_PHRASE}`);
       return;
@@ -98,9 +105,9 @@ export default function ZeroStockModal({
     try {
       let result;
       if (scope === 'all') {
-        result = await window.electron.inventory.zeroAllStock();
+        result = await window.electron.inventory.zeroAllStock(currentCompanyId);
       } else {
-        result = await window.electron.inventory.zeroStockByCategory(selectedCategory);
+        result = await window.electron.inventory.zeroStockByCategory(currentCompanyId, selectedCategory);
       }
 
       if (result.protocolNumber) {

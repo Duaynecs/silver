@@ -92,21 +92,8 @@ export const useStockMovementsStore = create<StockMovementsState>((set) => ({
         throw new Error('Nenhuma empresa selecionada');
       }
 
-      const now = Date.now();
-
-      // Registra a movimentação
-      await window.electron.db.execute(
-        `INSERT INTO stock_movements (
-          product_id, type, quantity, unit_cost, notes, movement_date, company_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [productId, 'entrada', quantity, unitCost, notes || null, now, companyId, now]
-      );
-
-      // Atualiza o estoque do produto
-      await window.electron.db.execute(
-        'UPDATE products SET stock_quantity = stock_quantity + ?, updated_at = ? WHERE id = ?',
-        [quantity, now, productId]
-      );
+      // Usa o novo handler que cria protocolo automaticamente
+      await window.electron.stock.addEntry(productId, quantity, unitCost, companyId, notes);
 
       set({ loading: false });
     } catch (error: any) {
@@ -131,34 +118,8 @@ export const useStockMovementsStore = create<StockMovementsState>((set) => ({
         throw new Error('Nenhuma empresa selecionada');
       }
 
-      const now = Date.now();
-
-      // Busca quantidade atual
-      const result = await window.electron.db.query(
-        'SELECT stock_quantity FROM products WHERE id = ? AND company_id = ?',
-        [productId, companyId]
-      );
-
-      if (!result || result.length === 0) {
-        throw new Error('Produto não encontrado');
-      }
-
-      const currentQuantity = result[0].stock_quantity;
-      const difference = newQuantity - currentQuantity;
-
-      // Registra a movimentação (sem custo unitário, pois foi removido)
-      await window.electron.db.execute(
-        `INSERT INTO stock_movements (
-          product_id, type, quantity, unit_cost, notes, movement_date, company_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [productId, 'ajuste', difference, null, notes || null, now, companyId, now]
-      );
-
-      // Atualiza o estoque do produto
-      await window.electron.db.execute(
-        'UPDATE products SET stock_quantity = ?, updated_at = ? WHERE id = ?',
-        [newQuantity, now, productId]
-      );
+      // Usa o novo handler que cria protocolo automaticamente
+      await window.electron.stock.addAdjustment(productId, newQuantity, companyId, notes);
 
       set({ loading: false });
     } catch (error: any) {

@@ -782,3 +782,193 @@ ipcMain.handle('protocol:getByReference', async (_event, referenceType: string, 
     throw new Error(error.message || 'Erro ao buscar protocolos por referência');
   }
 });
+
+// Stock Adjustment Handler (with Protocol)
+ipcMain.handle('stock:addAdjustment', async (_event, productId: number, newQuantity: number, companyId: number, notes?: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  if (!companyId) throw new Error('Company ID is required');
+
+  try {
+    // Busca produto e quantidade atual
+    const product = dbManager.query(
+      'SELECT id, name, stock_quantity FROM products WHERE id = ? AND company_id = ?',
+      [productId, companyId]
+    ) as Array<{ id: number; name: string; stock_quantity: number }>;
+
+    if (!product || product.length === 0) {
+      throw new Error('Produto não encontrado');
+    }
+
+    const currentQuantity = product[0].stock_quantity;
+    const difference = newQuantity - currentQuantity;
+
+    if (difference === 0) {
+      throw new Error('A nova quantidade é igual à quantidade atual');
+    }
+
+    // Cria o protocolo
+    const protocolManager = dbManager.getProtocolManager();
+    const protocolNumber = protocolManager.createProtocol(
+      'adjustment',
+      [{
+        productId,
+        quantityChanged: difference
+      }],
+      {
+        notes: notes || `Ajuste de estoque - ${product[0].name}: ${currentQuantity} → ${newQuantity}`
+      }
+    );
+
+    return { success: true, protocolNumber, quantityChanged: difference };
+  } catch (error: any) {
+    console.error('Erro ao adicionar ajuste de estoque:', error);
+    throw new Error(error.message || 'Erro ao adicionar ajuste de estoque');
+  }
+});
+
+// Stock Entry Handler (with Protocol)
+ipcMain.handle('stock:addEntry', async (_event, productId: number, quantity: number, unitCost: number, companyId: number, notes?: string) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  if (!companyId) throw new Error('Company ID is required');
+  if (quantity <= 0) throw new Error('A quantidade deve ser maior que zero');
+
+  const now = Date.now();
+
+  try {
+    // Busca produto
+    const product = dbManager.query(
+      'SELECT id, name, stock_quantity FROM products WHERE id = ? AND company_id = ?',
+      [productId, companyId]
+    ) as Array<{ id: number; name: string; stock_quantity: number }>;
+
+    if (!product || product.length === 0) {
+      throw new Error('Produto não encontrado');
+    }
+
+    // Atualiza custo médio do produto
+    const currentQuantity = product[0].stock_quantity;
+    const currentCost = dbManager.query(
+      'SELECT purchase_price FROM products WHERE id = ?',
+      [productId]
+    ) as Array<{ purchase_price: number }>;
+
+    const currentPurchasePrice = currentCost[0]?.purchase_price || 0;
+    const newAverageCost = currentQuantity > 0
+      ? ((currentPurchasePrice * currentQuantity) + (unitCost * quantity)) / (currentQuantity + quantity)
+      : unitCost;
+
+    // Atualiza preço de compra
+    dbManager.execute(
+      'UPDATE products SET purchase_price = ?, updated_at = ? WHERE id = ?',
+      [newAverageCost, now, productId]
+    );
+
+    // Cria o protocolo
+    const protocolManager = dbManager.getProtocolManager();
+    const protocolNumber = protocolManager.createProtocol(
+      'purchase',
+      [{
+        productId,
+        quantityChanged: quantity
+      }],
+      {
+        notes: notes || `Entrada de estoque - ${product[0].name}: +${quantity} unidades (R$ ${unitCost.toFixed(2)}/un)`
+      }
+    );
+
+    return { success: true, protocolNumber, quantityAdded: quantity };
+  } catch (error: any) {
+    console.error('Erro ao adicionar entrada de estoque:', error);
+    throw new Error(error.message || 'Erro ao adicionar entrada de estoque');
+  }
+});
+
+// Complete Sale Handler (with Protocol)
+ipcMain.handle('sales:complete', async (_event, saleData: {
+  items: Array<{ productId: number; quantity: number; unitPrice: number; discount: number; total: number }>;
+  payments: Array<{ paymentMethodId: number; amount: number }>;
+  customerId?: number;
+  cashRegisterId: number;
+  discount: number;
+  companyId: number;
+}) => {
+  if (!dbManager) throw new Error('Database not initialized');
+
+  if (!saleData.companyId) throw new Error('Company ID is required');
+
+  const now = Date.now();
+  const saleNumber = `V${now}`;
+
+  try {
+    // Calcula totais
+    const totalItems = saleData.items.reduce((sum, item) => sum + item.total, 0);
+    const finalAmount = totalItems - saleData.discount;
+    const totalPaid = saleData.payments.reduce((sum, payment) => sum + payment.amount, 0);
+    const changeAmount = totalPaid > finalAmount ? totalPaid - finalAmount : 0;
+
+    // 1. Insere a venda
+    const saleResult = dbManager.execute(
+      `INSERT INTO sales (sale_number, customer_id, cash_register_id, total_amount,
+       discount, final_amount, change_amount, status, sale_date, company_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        saleNumber,
+        saleData.customerId || null,
+        saleData.cashRegisterId,
+        totalItems,
+        saleData.discount,
+        finalAmount,
+        changeAmount,
+        'completed',
+        now,
+        saleData.companyId,
+        now,
+        now,
+      ]
+    );
+
+    const saleId = (saleResult as any).lastInsertRowid;
+
+    // 2. Insere itens da venda
+    for (const item of saleData.items) {
+      dbManager.execute(
+        `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, discount, total, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [saleId, item.productId, item.quantity, item.unitPrice, item.discount, item.total, now]
+      );
+    }
+
+    // 3. Insere pagamentos
+    for (const payment of saleData.payments) {
+      dbManager.execute(
+        'INSERT INTO sale_payments (sale_id, payment_method_id, amount, created_at) VALUES (?, ?, ?, ?)',
+        [saleId, payment.paymentMethodId, payment.amount, now]
+      );
+    }
+
+    // 4. Cria protocolo para movimentação de estoque (com transação interna)
+    const movements = saleData.items.map(item => ({
+      productId: item.productId,
+      quantityChanged: -item.quantity // Negativo pois é saída
+    }));
+
+    const protocolManager = dbManager.getProtocolManager();
+    const protocolNumber = protocolManager.createProtocol(
+      'sale',
+      movements,
+      {
+        referenceId: saleId,
+        referenceType: 'sale',
+        notes: `Venda ${saleNumber} - ${saleData.items.length} produto(s)`
+      }
+    );
+
+    return { saleNumber, saleId, protocolNumber };
+
+  } catch (error: any) {
+    console.error('Erro ao completar venda:', error);
+    throw new Error(error.message || 'Erro ao completar venda');
+  }
+});

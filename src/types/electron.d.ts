@@ -66,6 +66,20 @@ export interface ElectronAPI {
     zeroAllStock: (companyId: number) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
     zeroStockByCategory: (companyId: number, category: string) => Promise<{ affectedProducts: number; protocolNumber: string | null }>;
   };
+  stock: {
+    addAdjustment: (productId: number, newQuantity: number, companyId: number, notes?: string) => Promise<{ success: boolean; protocolNumber: string; quantityChanged: number }>;
+    addEntry: (productId: number, quantity: number, unitCost: number, companyId: number, notes?: string) => Promise<{ success: boolean; protocolNumber: string; quantityAdded: number }>;
+  };
+  sales: {
+    complete: (saleData: {
+      items: Array<{ productId: number; quantity: number; unitPrice: number; discount: number; total: number }>;
+      payments: Array<{ paymentMethodId: number; amount: number }>;
+      customerId?: number;
+      cashRegisterId: number;
+      discount: number;
+      companyId: number;
+    }) => Promise<{ saleNumber: string; saleId: number; protocolNumber: string }>;
+  };
   protocol: {
     list: (filters?: {
       type?: string;
