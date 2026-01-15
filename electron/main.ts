@@ -834,8 +834,6 @@ ipcMain.handle('stock:addEntry', async (_event, productId: number, quantity: num
   if (!companyId) throw new Error('Company ID is required');
   if (quantity <= 0) throw new Error('A quantidade deve ser maior que zero');
 
-  const now = Date.now();
-
   try {
     // Busca produto
     const product = dbManager.query(
@@ -847,25 +845,7 @@ ipcMain.handle('stock:addEntry', async (_event, productId: number, quantity: num
       throw new Error('Produto não encontrado');
     }
 
-    // Atualiza custo médio do produto
-    const currentQuantity = product[0].stock_quantity;
-    const currentCost = dbManager.query(
-      'SELECT purchase_price FROM products WHERE id = ?',
-      [productId]
-    ) as Array<{ purchase_price: number }>;
-
-    const currentPurchasePrice = currentCost[0]?.purchase_price || 0;
-    const newAverageCost = currentQuantity > 0
-      ? ((currentPurchasePrice * currentQuantity) + (unitCost * quantity)) / (currentQuantity + quantity)
-      : unitCost;
-
-    // Atualiza preço de compra
-    dbManager.execute(
-      'UPDATE products SET purchase_price = ?, updated_at = ? WHERE id = ?',
-      [newAverageCost, now, productId]
-    );
-
-    // Cria o protocolo
+    // Cria o protocolo (que já atualiza o estoque internamente)
     const protocolManager = dbManager.getProtocolManager();
     const protocolNumber = protocolManager.createProtocol(
       'purchase',

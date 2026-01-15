@@ -153,66 +153,33 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       throw new Error('Nenhuma empresa selecionada');
     }
 
-    const now = Date.now();
-    const saleNumber = `V${now}`;
-
     try {
-      // Inserir venda
-      const changeAmount = get().getChangeAmount();
-      const saleResult = await window.electron.db.execute(
-        `INSERT INTO sales (sale_number, customer_id, cash_register_id, total_amount,
-         discount, final_amount, change_amount, status, sale_date, company_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          saleNumber,
-          currentSale.customerId || null,
-          cashRegisterId,
-          get().getTotalItems(),
-          currentSale.discount,
-          get().getFinalAmount(),
-          changeAmount,
-          'completed',
-          now,
-          companyId,
-          now,
-          now,
-        ]
-      );
+      // Prepara os dados da venda para o novo handler com protocolo
+      const items = currentSale.items.map(item => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount,
+        total: item.total,
+      }));
 
-      const saleId = (saleResult as any).lastInsertRowid;
+      const payments = currentSale.payments.map(payment => ({
+        paymentMethodId: payment.paymentMethod.id,
+        amount: payment.amount,
+      }));
 
-      // Inserir itens da venda
-      for (const item of currentSale.items) {
-        await window.electron.db.execute(
-          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, discount, total, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [saleId, item.product.id, item.quantity, item.unitPrice, item.discount, item.total, now]
-        );
-
-        // Atualizar estoque (baixa)
-        await window.electron.db.execute(
-          'UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?',
-          [item.quantity, item.product.id]
-        );
-
-        // Registrar movimentação de estoque
-        await window.electron.db.execute(
-          `INSERT INTO stock_movements (product_id, type, quantity, reference_id, reference_type,
-           movement_date, company_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [item.product.id, 'saida', item.quantity, saleId, 'sale', now, companyId, now]
-        );
-      }
-
-      // Inserir pagamentos
-      for (const payment of currentSale.payments) {
-        await window.electron.db.execute(
-          'INSERT INTO sale_payments (sale_id, payment_method_id, amount, created_at) VALUES (?, ?, ?, ?)',
-          [saleId, payment.paymentMethod.id, payment.amount, now]
-        );
-      }
+      // Usa o novo handler que cria protocolo automaticamente
+      const result = await window.electron.sales.complete({
+        items,
+        payments,
+        customerId: currentSale.customerId,
+        cashRegisterId,
+        discount: currentSale.discount,
+        companyId,
+      });
 
       get().clearSale();
-      return saleNumber;
+      return result.saleNumber;
     } catch (error) {
       console.error('Error completing sale:', error);
       throw error;

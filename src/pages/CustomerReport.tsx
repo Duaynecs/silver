@@ -68,12 +68,20 @@ export default function CustomerReport() {
   useEffect(() => {
     fetchCustomers();
     // Define o mês atual como período padrão
+    // Usa data local em vez de UTC para evitar problemas de timezone
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    setStartDate(firstDay.toISOString().split('T')[0]);
-    setEndDate(lastDay.toISOString().split('T')[0]);
+    const formatLocalDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    setStartDate(formatLocalDate(firstDay));
+    setEndDate(formatLocalDate(lastDay));
   }, [fetchCustomers]);
 
   const loadCustomerReport = async () => {
@@ -85,8 +93,20 @@ export default function CustomerReport() {
     setLoading(true);
     try {
       const customerId = parseInt(selectedCustomerId);
-      const start = startDate ? new Date(startDate).getTime() : 0;
-      const end = endDate ? new Date(endDate + 'T23:59:59').getTime() : Date.now();
+
+      // Converte datas para timezone local
+      let start = 0;
+      let end = Date.now();
+
+      if (startDate) {
+        const [year, month, day] = startDate.split('-').map(Number);
+        start = new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+      }
+
+      if (endDate) {
+        const [year, month, day] = endDate.split('-').map(Number);
+        end = new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+      }
 
       // Busca vendas do cliente
       const salesData = await window.electron.db.query(

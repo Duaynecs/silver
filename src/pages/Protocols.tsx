@@ -75,11 +75,15 @@ export default function Protocols() {
       }
 
       if (filterStartDate) {
-        filters.startDate = new Date(filterStartDate).getTime();
+        // Usa timezone local em vez de UTC
+        const [year, month, day] = filterStartDate.split('-').map(Number);
+        filters.startDate = new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
       }
 
       if (filterEndDate) {
-        filters.endDate = new Date(filterEndDate + 'T23:59:59').getTime();
+        // Usa timezone local em vez de UTC
+        const [year, month, day] = filterEndDate.split('-').map(Number);
+        filters.endDate = new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
       }
 
       const result = await window.electron.protocol.list(filters);

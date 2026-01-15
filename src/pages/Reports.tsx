@@ -40,10 +40,15 @@ export default function Reports() {
 
   useEffect(() => {
     // Define período padrão: data de hoje (inicial e final)
+    // Usa data local em vez de UTC para evitar problemas de timezone
     const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const localDateStr = `${year}-${month}-${day}`;
 
-    setStartDate(today.toISOString().split('T')[0]);
-    setEndDate(today.toISOString().split('T')[0]);
+    setStartDate(localDateStr);
+    setEndDate(localDateStr);
 
     // Carrega as configurações
     fetchSettings();
