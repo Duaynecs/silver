@@ -93,12 +93,34 @@ export interface ElectronAPI {
     cancel: (protocolNumber: string, cancelledBy?: number) => Promise<{ success: boolean }>;
     getByReference: (referenceType: string, referenceId: number) => Promise<any[]>;
   };
+  updater: {
+    check: () => Promise<{ success: boolean }>;
+    download: () => Promise<{ success: boolean }>;
+    install: () => Promise<{ success: boolean }>;
+    getState: () => Promise<UpdaterState>;
+    getVersionInfo: () => Promise<{ current: string; history: Array<{ version: string; date: string }> }>;
+    onStatus: (callback: (data: { status: string; data?: any }) => void) => () => void;
+  };
   platform: string;
   versions: {
     node: string;
     chrome: string;
     electron: string;
   };
+}
+
+export interface UpdaterState {
+  checking: boolean;
+  available: boolean;
+  downloading: boolean;
+  downloaded: boolean;
+  progress: number;
+  error: string | null;
+  updateInfo: {
+    version: string;
+    releaseNotes?: string;
+    releaseDate?: string;
+  } | null;
 }
 
 declare global {

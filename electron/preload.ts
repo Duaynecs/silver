@@ -107,6 +107,20 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('protocol:getByReference', referenceType, referenceId),
   },
 
+  // Updater operations
+  updater: {
+    check: () => ipcRenderer.invoke('updater:check'),
+    download: () => ipcRenderer.invoke('updater:download'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    getState: () => ipcRenderer.invoke('updater:getState'),
+    getVersionInfo: () => ipcRenderer.invoke('updater:getVersionInfo'),
+    onStatus: (callback: (data: { status: string; data?: any }) => void) => {
+      const handler = (_event: any, data: { status: string; data?: any }) => callback(data);
+      ipcRenderer.on('updater:status', handler);
+      return () => ipcRenderer.removeListener('updater:status', handler);
+    },
+  },
+
   // Platform info
   platform: process.platform,
 
@@ -193,12 +207,34 @@ export interface ElectronAPI {
     cancel: (protocolNumber: string, cancelledBy?: number) => Promise<{ success: boolean }>;
     getByReference: (referenceType: string, referenceId: number) => Promise<any[]>;
   };
+  updater: {
+    check: () => Promise<{ success: boolean }>;
+    download: () => Promise<{ success: boolean }>;
+    install: () => Promise<{ success: boolean }>;
+    getState: () => Promise<UpdaterState>;
+    getVersionInfo: () => Promise<{ current: string; history: Array<{ version: string; date: string }> }>;
+    onStatus: (callback: (data: { status: string; data?: any }) => void) => () => void;
+  };
   platform: string;
   versions: {
     node: string;
     chrome: string;
     electron: string;
   };
+}
+
+export interface UpdaterState {
+  checking: boolean;
+  available: boolean;
+  downloading: boolean;
+  downloaded: boolean;
+  progress: number;
+  error: string | null;
+  updateInfo: {
+    version: string;
+    releaseNotes?: string;
+    releaseDate?: string;
+  } | null;
 }
 
 declare global {

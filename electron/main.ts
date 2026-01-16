@@ -4,6 +4,14 @@ import { promises as fs } from 'fs';
 import { DatabaseManager } from './database/manager';
 import { DataCloning, type CloningOptions } from './database/cloning';
 import bcrypt from 'bcrypt';
+import {
+  initUpdater,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  getUpdaterState,
+  getVersionInfo,
+} from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 let dbManager: DatabaseManager | null = null;
@@ -231,6 +239,11 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Inicializa o auto-updater (apenas em produção)
+  if (!isDev && mainWindow) {
+    initUpdater(mainWindow);
+  }
 
   // Inicia o backup automático
   startAutoBackup();
@@ -951,4 +964,29 @@ ipcMain.handle('sales:complete', async (_event, saleData: {
     console.error('Erro ao completar venda:', error);
     throw new Error(error.message || 'Erro ao completar venda');
   }
+});
+
+// ==================== Updater Handlers ====================
+
+ipcMain.handle('updater:check', async () => {
+  checkForUpdates();
+  return { success: true };
+});
+
+ipcMain.handle('updater:download', async () => {
+  downloadUpdate();
+  return { success: true };
+});
+
+ipcMain.handle('updater:install', async () => {
+  installUpdate();
+  return { success: true };
+});
+
+ipcMain.handle('updater:getState', async () => {
+  return getUpdaterState();
+});
+
+ipcMain.handle('updater:getVersionInfo', async () => {
+  return getVersionInfo();
 });
